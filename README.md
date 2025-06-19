@@ -7,14 +7,12 @@ This repository contains functions and scripts to fun functional change point an
 ```
 fcpt/
 │ 
-│── files/
-│ 
-│── functions/
-│ 
-│── scripts/
-│ 
-│── statsScripts/
-│ 
+│── dataRaw/ # contains raw data
+│── examples/ #contains examples for usage
+│── functions/ # contains function files, including those for functional change point detection 
+│── plotting/ # contains plotting Jupyter scripts
+│── scripts/ # contains Jupyter scripts for running fcpt detection
+│── statsScripts/ #contains scripts to run statistical analysis
 │ 
 │── README.md
 │── LICENSE
@@ -23,8 +21,8 @@ fcpt/
 ```
 
 ## Requirements
-- Pthon(Tested on version ______)
-- Required Python packages: ______
+- Pthon(Tested on version 3.10.14)
+- Required Python packages: see requirements.txt
 
 ## License
 [MIT License](LICENSE)
