@@ -1,0 +1,50 @@
+# Python cache and data
+*.pyc
+*.h5
+*.pkl
+
+# macOS metadata
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local files and virtual environments
+venv/
+Helpful_FDA_things.ipynb
+
+# INDiGO raw data
+dataRaw/indigoTileMetadata025LPF.csv
+dataRaw/indigoTileTrialsVlen025LPF.h5
+dataRaw/indigoParcelMetadata025LPF.csv
+dataRaw/indigoParcelTrialsVlen025LPF.h5
+dataRaw/indigoChannelTrialsVlen025LPF.h5
+dataRaw/indigoChannelMetadata025LPF.csv
+
+# INDiGO stats scripts
+statsScripts/statIindigoCheckHabituation.ipynb
+statsScripts/statCompareIndigoParcels.ipynb
+statsScripts/statCompareIndigoChannels.ipynb
+statsScripts/statIindigoGroupChangePoints.ipynb
+statsScripts/statIindigoIndividualChangePoints.ipynb
+
+# INDiGO ipynb files
+scripts/collateFPCData.ipynb
+scripts/fsbsChangePoint.ipynb
+scripts/getBrightChannelTrialsDataframe.ipynb
+scripts/getTileTrialsDataframe.ipynb
+scripts/indDotChangeTile.ipynb
+scripts/grpDotFindChangeParcels.ipynb
+scripts/getParcelTrialsDataframe.ipynb
+scripts/indDotChangeParcel.ipynb
+scripts/grpDotChangeChannel.ipynb
+scripts/grpDotChangeParcel.ipynb
+scripts/grpDotFindChangeChannels.ipynb
+scripts/grpDotChangeTile.ipynb
+scripts/getChannelTrialsDataframe.ipynb
+
+# INDiGO plotting
+plotting/statIindigoGroupPlots.ipynb
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
