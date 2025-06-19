@@ -13,9 +13,10 @@ fcpt/
 │── plotting/ # contains plotting Jupyter scripts
 │── scripts/ # contains Jupyter scripts for running fcpt detection
 │── statsScripts/ #contains scripts to run statistical analysis
-│ 
-│── README.md
+│
 │── LICENSE
+│── README.md
+│── requirements.txt #lists necessary Python packages
 
 
 ```
