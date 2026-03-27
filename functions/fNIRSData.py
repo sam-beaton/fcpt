@@ -377,7 +377,7 @@ def getTileNumbers(padname):
             12: [33, 34, 35, 36]
         }
 
-    elif padname in {'GA00440', 'GA00438', 'GA00439'}:
+    elif padname in {'GA00440', 'GA00438', 'GA00439', 'GA00547'}:
         sourceTile = {
             1: [1, 2, 3],
             2: [4, 5, 6],
@@ -413,7 +413,7 @@ def getTileNumbers(padname):
             15: [17, 18, 19, 20]
         }
 
-    elif padname in {'GA00370', 'GA00369', 'GA00351'}:
+    elif padname in {'GA00370', 'GA00369', 'GA00351', 'GA00504'}:
         sourceTile = {
             1: [1, 2, 3],
             2: [4, 5, 6],
