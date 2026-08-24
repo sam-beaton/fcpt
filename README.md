@@ -36,6 +36,15 @@ pip install -r requirements.txt
 
 `requirements.txt` is a broad environment snapshot covering several projects that share this codebase; not every package is needed for the individual-level pipeline described below.
 
+**A note for Windows users**
+
+*This pipeline has been developed and tested on macOS only. File paths throughout use Python's pathlib, which is cross-platform by design, but the wider installation and runtime environment hasn't been verified on Windows. A couple of things worth expecting:
+
+Some dependencies may need to be compiled from source during installation, which can require build tools that aren't present on Windows by default.
+A small number of scripts assume a Mac/Linux-style external toolchain on the system PATH; these may need adapting, or running via WSL, on Windows.
+
+If you're setting this up on Windows, budget some extra time for installation in particular.*
+
 ## Reproducing the individual-level analysis
 
 Notebooks are run in this order. Each expects the outputs of the previous step to already exist in `dataRaw/` or `data/` (created automatically as you go).
