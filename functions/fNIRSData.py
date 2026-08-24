@@ -5,7 +5,13 @@ import pandas as pd
 import pickle
 import scipy.io
 import skfda
-from auxFuncChPt import calculateMeanCoefficients, findGroupRegionFirstChangePoints
+
+# NOTE: calculateMeanCoefficients was previously imported from BOTH auxFuncChPt
+# and sharedUtils (the second import silently overwriting the first, since
+# both modules define an identical, byte-for-byte-matching function). Kept
+# here from sharedUtils only, since that was the version actually in effect;
+# findGroupRegionFirstChangePoints (only defined in auxFuncChPt) is unaffected.
+from auxFuncChPt import findGroupRegionFirstChangePoints
 from collections import Counter
 from sharedUtils import calculateMeanCoefficients
 from scipy.stats import gamma
@@ -14,7 +20,30 @@ from statistics import mean
 import sys
 import warnings
 
-sys.path.append("/Users/sambe/Documents/Python_Projects/FDA/functions")
+from pathlib import Path
+
+# Root of this project (the folder containing this notebook, or an ancestor of
+# it, named 'FDA'). Walks up from the current working directory until it finds
+# one. (Same pattern used throughout this project's notebooks.)
+cwd = Path().resolve()
+if cwd.name == 'FDA':
+    projectRoot = cwd
+else:
+    for parent in cwd.parents:
+        if parent.name == 'FDA':
+            projectRoot = parent
+            break
+    else:
+        raise FileNotFoundError("Could not find FDA project root")
+
+sys.path.append(str(projectRoot / 'functions'))
+
+# NOTE: this self-import looks unusual, but is genuinely needed - some
+# functions in this file (e.g. processInfantTrials) call fNIRSData.xxx(...)
+# without receiving fNIRSData as an explicit parameter, so they rely on this
+# module-level import of itself. Functions that DO receive fNIRSData as an
+# explicit parameter (e.g. processIndividualRegionInfant, processGroupRegion)
+# use that parameter instead - this self-import is a fallback for the rest.
 import fNIRSData
 
 def storeChannelData(datapath, partID, chromNum, chanNum):
@@ -377,7 +406,7 @@ def getTileNumbers(padname):
             12: [33, 34, 35, 36]
         }
 
-    elif padname in {'GA00440', 'GA00438', 'GA00439', 'GA00547'}:
+    elif padname in {'GA00440', 'GA00438', 'GA00439'}:
         sourceTile = {
             1: [1, 2, 3],
             2: [4, 5, 6],
@@ -413,7 +442,7 @@ def getTileNumbers(padname):
             15: [17, 18, 19, 20]
         }
 
-    elif padname in {'GA00370', 'GA00369', 'GA00351', 'GA00504'}:
+    elif padname in {'GA00370', 'GA00369', 'GA00351'}:
         sourceTile = {
             1: [1, 2, 3],
             2: [4, 5, 6],
@@ -720,17 +749,42 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
                             firstTrial, lastTrial, firstSamp, lastSamp,
                             numBasis, firstFunc, lastFunc,
                             cptSignificance, lrCovLag, useLongRun, useWildBinSeg,
-                            fNIRSData, auxFuncChPt, regionType, regionValue):
+                            fNIRSData, auxFuncChPt, regionType, regionValue,
+                            useTrialImputation=False, minObservedTrialsForImputation=8,
+                            imputationVarThresh=0.85, maxImputationComponents=None,
+                            restrictChroms=None):
     
     """
     runs tile-based change point detection for individual data; allows for parallelisation of the tile/infant loop
     to speed up processing.
+
+    useTrialImputation : bool, default False
+        If True, whole missing trials (individual level) are reconstructed via
+        auxFuncChPt.imputeMissingTrialsFPCA before the change-point test, both for the
+        combined HbT/HbDiff measures and for each chromophore analysed independently.
+        Imputation is within-infant, within-chromophore, and is skipped for a given
+        infant/region/chromophore if fewer than `minObservedTrialsForImputation` real
+        trials are available (in which case behaviour falls back to the original
+        complete-case pipeline). Default is False so existing results are reproduced
+        exactly unless explicitly opted in.
+    minObservedTrialsForImputation : int, default 8
+        Passed through to auxFuncChPt.imputeMissingTrialsFPCA.
+    imputationVarThresh, maxImputationComponents :
+        Passed through to auxFuncChPt.imputeMissingTrialsFPCA.
+    restrictChroms : iterable or None, default None
+        If provided, restricts the per-chromophore loop (Chrom == 1, 2, ... analysed
+        individually) to only these chromophore codes for this specific call, e.g. to
+        subset to infant x parcel x age x chromophore combinations already flagged by
+        an external analysis (such as TFCE). Does NOT affect the combined HbT/HbDiff
+        analysis, which always uses both HbO and HbR. Pass None (default) to keep the
+        original behaviour of looping over all of uniqueChroms.
     """
     
     excludedCombinedValidLog = []
     excludedCombinedTrialsLog = []
     excludedChromValidLog = []
     excludedChromTrialsLog = []
+    imputedTrialsLog = []
     indChangepointRows = []
 
     # Get HbO and HbR data
@@ -748,12 +802,12 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
     if not (hboValid and hbrValid):
         print(f"Excluded Infant {infant}, Parcel {regionValue}: invalid HbO or HbR data")
         excludedCombinedValidLog.append({'Infant': infant, regionType: regionValue, 'Age': age})
-        return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog
+        return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog, imputedTrialsLog
 
     if (not hbrTrialList[0] in [1, 2]) or (not len(hbrTrialList) > 20):
         print(f"Excluded Infant {infant}, Parcel {regionValue}: insufficient trials (n={len(hbrTrialList)})")
         excludedCombinedTrialsLog.append({'Infant': infant, regionType: regionValue, 'Age': age})
-        return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog
+        return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog, imputedTrialsLog
     
     # Align by trial occurrence count
     hboCounts = Counter(hboTrialList)
@@ -791,9 +845,39 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
     hboInfRegionObj = fNIRSData.convertToFunctionalData(hboTs, hboGridPoints, numBasis)
     hbrInfRegionObj = fNIRSData.convertToFunctionalData(hbrTs, hbrGridPoints, numBasis)
 
+    # Optionally reconstruct whole missing trials (individual level) via FPCA on this
+    # infant's own observed trials, so downstream trial-index -> trial-number mapping
+    # is dense over [firstTrial, lastTrial] and imputed trials are logged.
+    # hboTrialList == hbrTrialList at this point (enforced by the paranoia check above),
+    # but HbO and HbR are imputed independently since each has its own FPCA structure.
+    if useTrialImputation:
+        hboInfRegionObj, hboFullTrialList, hboImputed = auxFuncChPt.imputeMissingTrialsFPCA(
+            hboInfRegionObj, hboTrialList, firstTrial, lastTrial,
+            minObservedTrials=minObservedTrialsForImputation,
+            varThresh=imputationVarThresh, maxComponents=maxImputationComponents
+        )
+        hbrInfRegionObj, hbrFullTrialList, hbrImputed = auxFuncChPt.imputeMissingTrialsFPCA(
+            hbrInfRegionObj, hbrTrialList, firstTrial, lastTrial,
+            minObservedTrials=minObservedTrialsForImputation,
+            varThresh=imputationVarThresh, maxComponents=maxImputationComponents
+        )
+        # both chromophores were aligned to the same trial list beforehand, so the
+        # reconstructed trial lists must match, or the two chromophores would no
+        # longer correspond trial-for-trial in the HbT/HbDiff sum below
+        if hboFullTrialList != hbrFullTrialList:
+            print(f"[WARNING] Imputed trial lists diverged between HbO/HbR — Infant: {infant}, "
+                  f"Age: {age}, Region: {regionType} {regionValue}. Skipping imputation for this combo.")
+        else:
+            for t in sorted(set(hboImputed) | set(hbrImputed)):
+                imputedTrialsLog.append({
+                    'Infant': infant, regionType: regionValue, 'Age': age,
+                    'Chromophore': 'Combined', 'Trial': t
+                })
+            hboTrialList, hbrTrialList = hboFullTrialList, hbrFullTrialList
+
     totalInfantTrialCoefficients = []
     diffInfantTrialCoefficients = []
-    for i in range(hboTs.shape[0]):
+    for i in range(hboInfRegionObj.coefficients.shape[0]):
         totalInfantTrialCoefficients.append(hboInfRegionObj.coefficients[i] + hbrInfRegionObj.coefficients[i])
         diffInfantTrialCoefficients.append(hboInfRegionObj.coefficients[i] - hbrInfRegionObj.coefficients[i])
 
@@ -820,7 +904,12 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
 
     indChangepointRows.extend(filteredDifferenceRows)
 
-    for chrom in uniqueChroms:
+    # Optionally restrict which chromophores are analysed individually for this
+    # specific infant x region x age call, e.g. to subset to combinations already
+    # flagged by an external analysis (TFCE). Combined HbT/HbDiff above is unaffected.
+    chromsToRun = uniqueChroms if restrictChroms is None else [c for c in uniqueChroms if c in set(restrictChroms)]
+
+    for chrom in chromsToRun:
         chromDf = subsetDf[(subsetDf['Infant'] == infant) & (subsetDf[regionType] == regionValue) & (subsetDf['Chrom'] == chrom)]
         chromTs, chromTrialList, chromValid = fNIRSData.extractTrialData(tsDataset, chromDf)
 
@@ -838,6 +927,18 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
         gridPoints = np.arange(0, lastSamp+2, abs(lastSamp+2)/chromTs.shape[1])
         chromInfRegionObj = fNIRSData.convertToFunctionalData(chromTs, gridPoints, numBasis)
 
+        if useTrialImputation:
+            chromInfRegionObj, chromFullTrialList, chromImputed = auxFuncChPt.imputeMissingTrialsFPCA(
+                chromInfRegionObj, chromTrialList, firstTrial, lastTrial,
+                minObservedTrials=minObservedTrialsForImputation,
+                varThresh=imputationVarThresh, maxComponents=maxImputationComponents
+            )
+            for t in chromImputed:
+                imputedTrialsLog.append({
+                    'Infant': infant, regionType: regionValue, 'Age': age,
+                    'Chromophore': chrom, 'Trial': t
+                })
+
         chromInfantTrialChromObj = skfda.representation.basis.FDataBasis(basis, chromInfRegionObj.coefficients)
 
         filteredChromRows = auxFuncChPt.processChangePoints(
@@ -850,7 +951,7 @@ def processIndividualRegionInfant(age, infant, subsetDf, tsDataset, uniqueChroms
 
         indChangepointRows.extend(filteredChromRows)
 
-    return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog
+    return indChangepointRows, excludedCombinedValidLog, excludedCombinedTrialsLog, excludedChromValidLog, excludedChromTrialsLog, imputedTrialsLog
 
 ########################################################################################
 
@@ -1089,4 +1190,31 @@ def checkGroupCriteria(group_key, allCorrelations, allCovariances,
     consistentCorrDirection = len(np.unique(np.sign(validCorr))) == 1
     consistentCovDirection = len(np.unique(np.sign(validCov))) == 1
     
-    return highCorrelation and significantCovariance and consistentCorrDirection and consistentCovDirection
+    return highCorrelation and significantCovariance 
+    # and consistentCorrDirection and consistentCovDirection
+
+#################################################################################################################
+
+def checkGroupCriteriaTEST(group_key, allCorrelations, allCovariances, 
+                       correlationThreshold=0.6, covarianceThreshold=1.0):
+    """
+    Check if a group meets all the filtering criteria using ALL blocks.
+    Used when longitudinally analysing change point data.
+    Returns True if at least one index satisfies BOTH correlation and covariance criteria.
+    """
+    if group_key not in allCorrelations or group_key not in allCovariances:
+        return False
+
+    correlations = np.array(allCorrelations[group_key])
+    covariances = np.array(allCovariances[group_key])
+
+    if len(correlations) != len(covariances):
+        return False
+
+    # Build boolean masks over the full arrays (NaN → False naturally via comparison)
+    highCorrelation       = np.abs(correlations) > correlationThreshold
+    significantCovariance = np.abs(covariances)  > covarianceThreshold
+
+    # At least one index must satisfy BOTH criteria simultaneously
+    return np.any(highCorrelation & significantCovariance)
+    # and consistentCorrDirection and consistentCovDirection

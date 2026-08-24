@@ -63,7 +63,7 @@ def translateNfValues(source, detector):
         
     # Returns: Tuple of (newSource, newDetector)
 
-    # f tile and position for source
+    # Find tile and position for source
     sourceTile, sourcePos = findTileAndPosition(source, nfSourceTile)
     if sourceTile is None:
         raise ValueError(f"Source {source} not found in NF mapping")

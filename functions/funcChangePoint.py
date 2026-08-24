@@ -5,7 +5,23 @@ from skfda.preprocessing.dim_reduction import FPCA
 from skfda.representation.basis import BSplineBasis
 import sys
 
-sys.path.append("/Users/sambe/Documents/Python_Projects/FDA/functions")
+from pathlib import Path
+
+# Root of this project (the folder containing this notebook, or an ancestor of
+# it, named 'FDA'). Walks up from the current working directory until it finds
+# one. (Same pattern used throughout this project's notebooks.)
+cwd = Path().resolve()
+if cwd.name == 'FDA':
+    projectRoot = cwd
+else:
+    for parent in cwd.parents:
+        if parent.name == 'FDA':
+            projectRoot = parent
+            break
+    else:
+        raise FileNotFoundError("Could not find FDA project root")
+
+sys.path.append(str(projectRoot / 'functions'))
 import auxFuncChPt as auxF
 
 ##########################################################################################################################################

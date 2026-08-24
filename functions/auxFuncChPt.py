@@ -2,14 +2,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
+from scipy.interpolate import interp1d
 import skfda
 from skfda.preprocessing.dim_reduction import FPCA
 from skfda.representation.basis import BSplineBasis
 from statsmodels.stats.multitest import multipletests # type: ignore
 import sys
 
-sys.path.append("/Users/sambe/Documents/Python_Projects/FDA/functions")
-import fNIRSData
+from pathlib import Path
+
+# Root of this project (the folder containing this notebook, or an ancestor of
+# it, named 'FDA'). Walks up from the current working directory until it finds
+# one. (Same pattern used throughout this project's notebooks.)
+cwd = Path().resolve()
+if cwd.name == 'FDA':
+    projectRoot = cwd
+else:
+    for parent in cwd.parents:
+        if parent.name == 'FDA':
+            projectRoot = parent
+            break
+    else:
+        raise FileNotFoundError("Could not find FDA project root")
+
+sys.path.append(str(projectRoot / 'functions'))
+
+# NOTE: this file does not actually call anything via `fNIRSData.` (confirmed -
+# no fNIRSData.xxx() calls anywhere in this file's body), so unlike
+# fNIRSData.py's own self-import, `import fNIRSData` is not needed here.
 import funcChangePoint
 
 
@@ -267,6 +287,123 @@ def cumulPercVariance(fdObj, varThresh = 0.85):
             dHat += 1 
 
     return dHat
+
+###################################################################################################################################################
+
+def imputeMissingTrialsFPCA(fdObj, trialList, firstTrial, lastTrial,
+                             minObservedTrials=8, varThresh=0.85, maxComponents=None):
+    """
+    Reconstructs whole missing trials for a single infant/region/chromophore using
+    functional PCA computed on that infant's own observed trials.
+
+    The observed trial curves (as B-spline basis coefficients) are decomposed via FPCA
+    into a mean curve plus a small number of principal component scores. Each
+    component's score is modelled as a function of trial number using linear
+    interpolation across the observed trials (with constant extrapolation at the
+    edges), and the missing trial's score is predicted from that model. The missing
+    trial's curve is then reconstructed as the mean curve plus the weighted sum of
+    principal component curves using the predicted scores.
+
+    This is a WITHIN-INFANT, WITHIN-CHROMOPHORE imputation: it borrows structure only
+    from the same infant's other trials for the same measure, never from other infants
+    or other chromophores.
+
+    NOTE: because the model used to impute a trial is fit on the same trials that will
+    subsequently be tested for a change point, imputed trials are not independent of
+    the model used to detect change -- see the caveats discussed alongside this
+    function's use in processIndividualRegionInfant. Imputed trials should be flagged
+    downstream (e.g. via the returned `imputedTrials` list) so that sensitivity
+    analyses excluding them can be run alongside the primary analysis.
+
+    Parameters
+    ----------
+    fdObj : skfda.representation.basis.FDataBasis
+        Functional data object containing only the OBSERVED (non-missing) trials for a
+        single infant/region/chromophore, in the same row order as `trialList`.
+    trialList : list of int
+        Trial numbers corresponding to each row of `fdObj`, same length and order.
+    firstTrial, lastTrial : int
+        The full range of trial numbers that should be present after imputation.
+    minObservedTrials : int, default 8
+        Minimum number of observed trials required before imputation is attempted.
+        Below this threshold, imputation is skipped and the input is returned
+        unchanged, so the existing trial-count exclusion criteria still apply.
+    varThresh : float, default 0.85
+        Proportion of variance to retain when choosing the number of FPCA components,
+        consistent with `cumulPercVariance`.
+    maxComponents : int or None
+        Optional hard cap on the number of FPCA components used, regardless of
+        `varThresh`. Useful to prevent overfitting when few trials are observed.
+
+    Returns
+    -------
+    fullFdObj : skfda.representation.basis.FDataBasis
+        Functional data object with one row per trial number in
+        range(firstTrial, lastTrial + 1), in ascending trial order. Observed rows are
+        copied through unchanged; missing rows are FPCA-reconstructed.
+    fullTrialList : list of int
+        range(firstTrial, lastTrial + 1) as a list -- the trial numbers corresponding
+        to each row of `fullFdObj`.
+    imputedTrials : list of int
+        Trial numbers that were imputed. Empty if nothing was missing, or if
+        imputation was skipped due to insufficient observed trials.
+    """
+    basis = fdObj.basis
+    coefs = fdObj.coefficients.astype('float64')
+    nObs, nBasisFuncs = coefs.shape
+
+    fullTrialRange = list(range(firstTrial, lastTrial + 1))
+    missingTrials = sorted(set(fullTrialRange) - set(trialList))
+
+    # nothing missing -- return input unchanged
+    if not missingTrials:
+        return fdObj, list(trialList), []
+
+    # not enough real data to model trial-to-trial structure -- leave as-is
+    # (downstream exclusion criteria, e.g. minimum trial count, will still apply)
+    if nObs < minObservedTrials:
+        return fdObj, list(trialList), []
+
+    # choose number of FPCA components, capped so it stays well identified with few trials
+    dHat = cumulPercVariance(fdObj, varThresh=varThresh)
+    dHat = max(1, min(dHat, nObs - 1))
+    if maxComponents is not None:
+        dHat = min(dHat, maxComponents)
+
+    fPCA = FPCA(n_components=dHat)
+    scores = fPCA.fit_transform(fdObj)                # shape (nObs, dHat)
+    meanCoef = fPCA.mean_.coefficients[0]              # shape (nBasisFuncs,)
+    componentCoefs = fPCA.components_.coefficients     # shape (dHat, nBasisFuncs)
+
+    sortedIdx = np.argsort(trialList)
+    xObs = np.array(trialList)[sortedIdx]
+
+    # model each PC score as a function of trial number; predict missing trials
+    predictedScores = np.zeros((len(missingTrials), dHat))
+    for k in range(dHat):
+        yObs = scores[sortedIdx, k]
+        interpFn = interp1d(
+            xObs, yObs, kind='linear',
+            bounds_error=False,
+            fill_value=(yObs[0], yObs[-1])  # constant extrapolation at the edges
+        )
+        predictedScores[:, k] = interpFn(missingTrials)
+
+    reconstructedCoefs = meanCoef[np.newaxis, :] + predictedScores @ componentCoefs
+
+    # assemble the full dense coefficient matrix in trial-number order
+    fullCoefs = np.zeros((len(fullTrialRange), nBasisFuncs))
+    obsLookup = {t: i for i, t in enumerate(trialList)}
+    missLookup = {t: i for i, t in enumerate(missingTrials)}
+    for row, t in enumerate(fullTrialRange):
+        if t in obsLookup:
+            fullCoefs[row] = coefs[obsLookup[t]]
+        else:
+            fullCoefs[row] = reconstructedCoefs[missLookup[t]]
+
+    fullFdObj = skfda.representation.basis.FDataBasis(basis, fullCoefs)
+
+    return fullFdObj, fullTrialRange, missingTrials
 
 ###################################################################################################################################################
 
@@ -632,6 +769,17 @@ def saveExcludedLogs(excludedCombinedValidLog, excludedCombinedTrialsLog, exclud
     combinedExcludedDf = pd.DataFrame(combinedExcludedLog)
 
     return combinedExcludedDf
+
+################################################################################################################################
+
+def saveImputationLog(imputedTrialsLog):
+    """
+    Converts the per-infant/region/chromophore imputed-trial log (a list of dicts,
+    one row per imputed trial) into a DataFrame for saving alongside the change-point
+    results, so imputed trials can be identified and, if desired, excluded in a
+    sensitivity analysis.
+    """
+    return pd.DataFrame(imputedTrialsLog)
 
 ################################################################################################################################
 

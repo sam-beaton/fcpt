@@ -38,6 +38,10 @@ Edit the path variables in the CONFIG section below to match your system.
 """
 
 import os
+# NOTE: this PATH-prepending approach assumes a Mac/Linux-style ANTs install
+# location and PATH separator (':'). ANTs isn't typically run natively on
+# Windows - if you need this there, run it via WSL (which uses the same
+# Mac/Linux-style path here) rather than trying to adapt this line directly.
 os.environ['PATH'] = '/opt/ANTs/bin:' + os.environ['PATH']
 import subprocess
 import tempfile

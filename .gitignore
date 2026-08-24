@@ -26,7 +26,6 @@ statsScripts/statIindigoCheckHabituation.ipynb
 statsScripts/statCompareIndigoParcels.ipynb
 statsScripts/statCompareIndigoChannels.ipynb
 statsScripts/statIindigoGroupChangePoints.ipynb
-statsScripts/statIindigoIndividualChangePoints.ipynb
 
 # INDiGO ipynb files
 scripts/collateFPCData.ipynb
@@ -35,8 +34,6 @@ scripts/getBrightChannelTrialsDataframe.ipynb
 scripts/getTileTrialsDataframe.ipynb
 scripts/indDotChangeTile.ipynb
 scripts/grpDotFindChangeParcels.ipynb
-scripts/getParcelTrialsDataframe.ipynb
-scripts/indDotChangeParcel.ipynb
 scripts/grpDotChangeChannel.ipynb
 scripts/grpDotChangeParcel.ipynb
 scripts/grpDotFindChangeChannels.ipynb
