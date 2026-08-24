@@ -43,5 +43,8 @@ scripts/getChannelTrialsDataframe.ipynb
 # INDiGO plotting
 plotting/statIindigoGroupPlots.ipynb
 
+# Documents
+documents/Beyond group averages individual differences in infant auditory habituation timing using high-density diffuse optical tomography in rural Gambia..pdf
+
 # Jupyter checkpoints
 .ipynb_checkpoints/
