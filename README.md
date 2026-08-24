@@ -45,6 +45,22 @@ pip install -r requirements.txt
 
 *If you're setting this up on Windows, budget some extra time for installation in particular.*
 
+## Auxiliary data (meshes, adjacency matrices & atlas files)
+
+`auxiliary/mri/` contains pre-built cortical surface meshes, parcel adjacency matrices, and the registered Wang432 atlas + GM reference volumes, so the pipeline can be run without generating these from raw MRI data yourself.
+
+These atlas/mesh files are registered onto the public UNC/NeuroDev template MRIs, not onto any individual participant's scan, and contain no participant-identifiable information — unlike the study's actual imaging data, which remains access-restricted (see Data availability, below).
+
+**To use these directly**, set `dataDriveRoot` (near the top of any notebook that references it) to the `auxiliary/mri/`'s parent folder inside your local clone:
+
+```python
+dataDriveRoot = Path().resolve().parent / 'auxiliary'  # adjust the number of .parent calls to match how deep the notebook sits
+```
+
+No other changes are needed — the folder structure under `auxiliary/mri/` exactly matches what every notebook already expects.
+
+**To regenerate these yourself** instead (e.g. after updating the underlying MRI atlas or mesh-generation parameters), run `makeBrainMesh.ipynb` and `buildSurfAdjacencyMatrices.ipynb` — see [Reproducing the individual-level analysis](#reproducing-the-individual-level-analysis) — and save the output over these files, or point `dataDriveRoot` elsewhere. Note that regenerating the meshes from scratch additionally requires a GM segmentation *volume* file not included in `auxiliary/` (only the final mesh output is provided here).
+
 ## Reproducing the individual-level analysis
 
 Notebooks are run in this order. Each expects the outputs of the previous step to already exist in `dataRaw/` or `data/` (created automatically as you go).
